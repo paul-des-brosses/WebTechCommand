@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CommandesLab</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="min-h-full text-slate-800 antialiased">
+
+<div id="app" v-cloak class="min-h-full flex flex-col">
+
+  <!-- ================= EN-TÊTE ================= -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-tr from-teal-600 to-emerald-500 text-white flex items-center justify-center font-bold">C</div>
+        <!-- Sur téléphone, une fois connecté, la place va au nom de l'utilisateur -->
+        <span :class="me && 'hidden sm:inline'" class="font-bold text-lg text-slate-900 truncate">CommandesLab</span>
+        <span v-if="isAdmin && storage" class="hidden md:inline px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-600 border border-slate-200" title="Où sont stockées les données">
+          {{ storage }}
+        </span>
+      </div>
+
+      <div v-if="me" class="flex items-center gap-3 min-w-0">
+        <div class="text-right leading-tight min-w-0">
+          <div class="text-sm font-semibold text-slate-800 truncate max-w-[11rem] sm:max-w-xs" :title="me.name">{{ me.name }}</div>
+          <div class="text-xs text-teal-700">{{ isAdmin ? 'Administrateur' : 'Étudiant' }}</div>
+        </div>
+        <button @click="logout" class="shrink-0 px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 hover:bg-rose-50 hover:text-rose-700 cursor-pointer">
+          Déconnexion
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 w-full max-w-6xl mx-auto p-4 sm:p-6">
+
+    <!-- ================= CONNEXION ================= -->
+    <section v-if="!me" class="max-w-sm mx-auto mt-12 bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+      <h1 class="text-2xl font-bold text-slate-900 text-center">Connexion</h1>
+      <p class="text-sm text-slate-500 text-center mt-1 mb-6">Gestion des commandes de matériel</p>
+
+      <form @submit.prevent="login" class="space-y-4">
+        <div>
+          <label class="label" for="login-username">Identifiant</label>
+          <input id="login-username" v-model.trim="loginForm.username" class="input" required autocomplete="username">
+        </div>
+        <div>
+          <label class="label" for="login-password">Mot de passe</label>
+          <input id="login-password" v-model="loginForm.password" type="password" class="input" required autocomplete="current-password">
+        </div>
+        <p v-if="loginForm.error" class="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm">{{ loginForm.error }}</p>
+        <button type="submit" class="btn-primary w-full">Se connecter</button>
+      </form>
+    </section>
+
+    <template v-else>
+
+      <!-- ================= ONGLETS ================= -->
+      <!-- Les onglets se partagent la largeur (le texte passe à la ligne sur téléphone) : aucun n'est caché -->
+      <nav class="flex gap-1 p-1 mb-6 bg-slate-200/60 rounded-xl sm:w-fit">
+        <button v-for="t in tabs" :key="t.id" @click="tab = t.id"
+          :class="tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+          class="flex-1 sm:flex-none px-3 sm:px-4 py-2 min-h-[2.75rem] text-sm leading-tight font-semibold rounded-lg cursor-pointer">
+          {{ t.label }}
+          <span v-if="t.id === 'orders' && isAdmin && counts.pending" class="ml-1 px-1.5 text-xs rounded-full bg-amber-500 text-white">{{ counts.pending }}</span>
+        </button>
+      </nav>
+
+      <!-- ================= COMMANDES (admin : toutes / étudiant : les siennes) ================= -->
+      <section v-if="tab === 'orders'" class="space-y-4">
+        <div class="flex flex-col md:flex-row md:items-center gap-3">
+          <div class="flex flex-wrap gap-2">
+            <button v-for="f in FILTERS" :key="f.id" @click="filter = f.id"
+              :class="filter === f.id ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'"
+              class="px-3 py-2 text-xs font-medium rounded-lg border whitespace-nowrap cursor-pointer">
+              {{ f.label }} ({{ counts[f.id] }})
+            </button>
+          </div>
+          <input v-model="search" class="input md:w-64 md:ml-auto" :placeholder="isAdmin ? 'Rechercher (titre, étudiant)' : 'Rechercher un titre'">
+        </div>
+
+        <p v-if="visibleOrders.length === 0" class="text-center text-sm text-slate-500 py-16 bg-white rounded-2xl border border-dashed border-slate-300">
+          Aucune commande dans cette catégorie.
+        </p>
+
+        <article v-for="order in visibleOrders" :key="order.id" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 pb-4 border-b border-slate-100">
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <h3 class="text-base font-bold text-slate-900">{{ order.title }}</h3>
+                <span :class="STATUSES[order.status].css" class="px-2.5 py-0.5 text-xs font-semibold rounded-full border">
+                  {{ STATUSES[order.status].label }}
+                </span>
+              </div>
+              <p class="text-xs text-slate-500 mt-1">
+                <template v-if="isAdmin">{{ order.studentName }} ({{ order.student }}) · </template>
+                Demandée le {{ formatDate(order.createdAt) }}
+              </p>
+            </div>
+            <div class="sm:text-right">
+              <div class="text-xs uppercase text-slate-400">Total</div>
+              <div class="text-lg font-bold text-teal-700">{{ formatPrice(order.total) }}</div>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm mt-2">
+              <tbody>
+                <tr v-for="(item, i) in order.items" :key="i" class="border-b border-slate-100 last:border-0">
+                  <td class="py-2 pr-3 font-medium">{{ item.name }}</td>
+                  <td class="py-2 pr-3">
+                    <a v-if="isWebLink(item.link)" :href="item.link" target="_blank" rel="noopener noreferrer" class="inline-block py-2 text-teal-700 hover:underline">Lien</a>
+                  </td>
+                  <td class="py-2 text-right font-semibold whitespace-nowrap">{{ formatPrice(item.price) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Historique des statuts -->
+          <ol class="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+            <li v-for="(h, i) in order.history" :key="i">
+              <span class="font-semibold text-slate-700">{{ STATUSES[h.status].label }}</span> · {{ formatDate(h.at) }}
+            </li>
+          </ol>
+
+          <div v-if="isAdmin && ACTIONS[order.status]" class="mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-2">
+            <button v-for="action in ACTIONS[order.status]" :key="action.to" @click="setStatus(order, action)" :disabled="busy"
+              :class="action.css" class="px-4 py-2 text-sm font-semibold rounded-xl cursor-pointer">
+              {{ action.label }}
+            </button>
+          </div>
+        </article>
+      </section>
+
+      <!-- ================= ÉTUDIANT : NOUVELLE DEMANDE ================= -->
+      <section v-if="tab === 'new'" class="max-w-3xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <h2 class="text-lg font-bold text-slate-900 mb-4">Demander une commande</h2>
+
+        <form @submit.prevent="submitOrder" class="space-y-5">
+          <div>
+            <label class="label" for="order-title">Titre de la demande</label>
+            <input id="order-title" v-model="orderForm.title" class="input" required maxlength="120" placeholder="Ex : Capteurs pour le projet robotique">
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="label mb-0">Objets</span>
+              <button type="button" @click="addItem" class="px-3 py-2 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer">
+                + Ajouter un objet
+              </button>
+            </div>
+
+            <div class="space-y-2">
+              <!-- Téléphone : nom et lien sur toute la largeur, puis prix + bouton retirer côte à côte -->
+              <div v-for="(item, i) in orderForm.items" :key="i" class="grid grid-cols-4 sm:grid-cols-12 gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <input v-model="item.name" class="input col-span-4 sm:col-span-5 bg-white" required maxlength="200" placeholder="Nom de l'objet" aria-label="Nom de l'objet">
+                <input v-model="item.link" type="url" class="input col-span-4 sm:col-span-4 bg-white" placeholder="https://… (facultatif)" aria-label="Lien d'achat">
+                <input v-model="item.price" type="number" step="0.01" min="0" class="input col-span-3 sm:col-span-2 bg-white text-right" required placeholder="Prix €" aria-label="Prix en euros">
+                <button type="button" @click="removeItem(i)" :disabled="orderForm.items.length === 1"
+                  class="col-span-1 min-h-[2.5rem] text-sm text-slate-400 rounded-lg hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
+                  title="Retirer cet objet" aria-label="Retirer cet objet">✕</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <span class="label mb-0">Total estimé</span>
+            <span class="text-xl font-bold text-teal-700">{{ formatPrice(orderTotal) }}</span>
+          </div>
+
+          <button type="submit" :disabled="busy" class="btn-primary w-full">Envoyer la demande</button>
+        </form>
+      </section>
+
+      <!-- ================= ADMIN : COMPTES ================= -->
+      <section v-if="tab === 'accounts'" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <form @submit.prevent="createAccount" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4 self-start">
+          <h2 class="text-base font-bold text-slate-900">Créer un compte</h2>
+          <div>
+            <label class="label" for="acc-username">Identifiant</label>
+            <input id="acc-username" v-model.trim="accountForm.username" class="input" required pattern="[a-zA-Z0-9._\-]{2,32}" placeholder="ex : jdupont"
+              title="2 à 32 caractères : lettres, chiffres, point, tiret, tiret bas">
+          </div>
+          <div>
+            <label class="label" for="acc-name">Nom complet</label>
+            <input id="acc-name" v-model.trim="accountForm.name" class="input" required maxlength="80" placeholder="ex : Jeanne Dupont">
+          </div>
+          <div>
+            <label class="label" for="acc-password">Mot de passe initial</label>
+            <input id="acc-password" v-model="accountForm.password" type="password" class="input" required minlength="6" autocomplete="new-password">
+          </div>
+          <div>
+            <label class="label" for="acc-role">Rôle</label>
+            <select id="acc-role" v-model="accountForm.role" class="input">
+              <option value="student">Étudiant</option>
+              <option value="admin">Administrateur</option>
+            </select>
+          </div>
+          <button type="submit" :disabled="busy" class="btn-primary w-full">Créer le compte</button>
+        </form>
+
+        <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+          <h2 class="text-base font-bold text-slate-900 mb-2">Comptes ({{ users.length }})</h2>
+          <!-- Liste plutôt que tableau : sur téléphone, les actions passent sous le nom au lieu de sortir de l'écran -->
+          <ul class="divide-y divide-slate-100">
+            <li v-for="u in users" :key="u.username" class="py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div class="flex-1 min-w-[10rem]">
+                <div class="font-medium text-sm break-words">{{ u.name }}</div>
+                <div class="text-xs text-slate-500">{{ u.username }} · {{ u.role === 'admin' ? 'Administrateur' : 'Étudiant' }}</div>
+              </div>
+              <span v-if="u.username === me.username" class="text-xs text-slate-400 italic">Vous</span>
+              <div v-else class="flex flex-wrap gap-1">
+                <button @click="renameAccount(u)" :disabled="busy" class="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">Renommer</button>
+                <button @click="resetPassword(u)" :disabled="busy" class="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">Mot de passe</button>
+                <button @click="deleteAccount(u)" :disabled="busy" class="px-3 py-2 text-xs font-medium rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 cursor-pointer">Supprimer</button>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ================= TOUS : MOT DE PASSE ================= -->
+      <section v-if="tab === 'password'" class="max-w-sm mx-auto bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <h2 class="text-lg font-bold text-slate-900 mb-4">Modifier mon mot de passe</h2>
+        <form @submit.prevent="changePassword" class="space-y-4">
+          <div>
+            <label class="label" for="pw-old">Mot de passe actuel</label>
+            <input id="pw-old" v-model="passwordForm.oldPassword" type="password" class="input" required autocomplete="current-password">
+          </div>
+          <div>
+            <label class="label" for="pw-new">Nouveau mot de passe</label>
+            <input id="pw-new" v-model="passwordForm.newPassword" type="password" class="input" required minlength="6" autocomplete="new-password">
+          </div>
+          <div>
+            <label class="label" for="pw-confirm">Confirmer</label>
+            <input id="pw-confirm" v-model="passwordForm.confirm" type="password" class="input" required minlength="6" autocomplete="new-password">
+          </div>
+          <button type="submit" :disabled="busy" class="btn-primary w-full">Enregistrer</button>
+        </form>
+      </section>
+
+    </template>
+  </main>
+
+  <!-- ================= NOTIFICATIONS ================= -->
+  <div class="fixed bottom-4 right-4 left-4 sm:left-auto z-50 flex flex-col gap-2 pointer-events-none">
+    <div v-for="t in toasts" :key="t.id" :class="t.type === 'error' ? 'bg-rose-600' : 'bg-teal-600'"
+      class="text-white px-4 py-3 rounded-xl shadow-lg text-sm font-medium sm:max-w-sm">
+      {{ t.message }}
+    </div>
+  </div>
+</div>
+
+<script src="api.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

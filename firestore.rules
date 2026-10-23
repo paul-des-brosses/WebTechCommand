@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Le navigateur ne parle jamais directement à Firestore : seul le serveur y accède,
+// avec le SDK firebase-admin, qui n'est pas soumis à ces règles.
+// On ferme donc tout accès client.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

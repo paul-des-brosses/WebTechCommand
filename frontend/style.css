@@ -1,0 +1,47 @@
+[v-cloak] {
+  display: none !important;
+}
+
+.input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+}
+
+.input:focus {
+  outline: none;
+  background: #fff;
+  box-shadow: 0 0 0 2px #14b8a6;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #475569;
+}
+
+.btn-primary {
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: #0d9488;
+  border-radius: 0.75rem;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: #0f766e;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
