@@ -1,12 +1,99 @@
 rules_version = '2';
 
-// Le navigateur ne parle jamais directement à Firestore : seul le serveur y accède,
-// avec le SDK firebase-admin, qui n'est pas soumis à ces règles.
-// On ferme donc tout accès client.
+// Ces règles sont le « backend » du site : les serveurs de Google les appliquent à chaque
+// lecture et écriture. Le code du site est public et ne décide de rien ; tout se joue ici.
+//
+// Données :
+//   users/{uid}    { email, name, role: 'admin' | 'student', active, createdAt }
+//   orders/{id}    { title, studentUid, studentName, items, status, dates: { <statut>: date } }
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+
+    // ---------------------------------------------------------------- Qui est connecté ?
+    // N'importe qui peut créer un compte Firebase Auth avec la clé publique du projet.
+    // Un compte Auth ne donne donc aucun droit à lui seul : il faut un profil users/{uid}
+    // créé par un administrateur, et actif.
+
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isActive() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().active == true;
+    }
+
+    function isAdmin() {
+      return isActive() && profile().role == 'admin';
+    }
+
+    function isStudent() {
+      return isActive() && profile().role == 'student';
+    }
+
+    function validName(name) {
+      return name is string && name.size() >= 1 && name.size() <= 80;
+    }
+
+    // ---------------------------------------------------------------- Profils
+
+    match /users/{uid} {
+      // Chacun lit son propre profil (le site en a besoin pour connaître son rôle) ; l'admin lit tout
+      allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['email', 'name', 'role', 'active', 'createdAt'])
+        && request.resource.data.keys().hasAll(['email', 'name', 'role', 'active', 'createdAt'])
+        && request.resource.data.email is string
+        && validName(request.resource.data.name)
+        && request.resource.data.role in ['student', 'admin']
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time;
+
+      // L'admin peut renommer et désactiver / réactiver les autres comptes, et rien d'autre
+      allow update: if isAdmin()
+        && uid != request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'active'])
+        && validName(request.resource.data.name)
+        && request.resource.data.active is bool;
+
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------- Commandes
+
+    function validNewOrder(order) {
+      return order.keys().hasOnly(['title', 'studentUid', 'studentName', 'items', 'status', 'dates'])
+        && order.keys().hasAll(['title', 'studentUid', 'studentName', 'items', 'status', 'dates'])
+        && order.studentUid == request.auth.uid
+        && order.studentName == profile().name
+        && order.title is string && order.title.size() >= 1 && order.title.size() <= 120
+        && order.items is list && order.items.size() >= 1 && order.items.size() <= 50
+        && order.status == 'pending'
+        && order.dates is map
+        && order.dates.keys().hasOnly(['pending'])
+        && order.dates.pending == request.time;
+    }
+
+    // Cycle de vie : En attente -> Acceptée ou Refusée, Acceptée -> Commandée, Commandée -> Archivée.
+    // Seuls le statut et la date de la nouvelle étape peuvent changer.
+    function validTransition() {
+      let before = resource.data.status;
+      let after = request.resource.data.status;
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'dates'])
+        && ((before == 'pending' && after in ['approved', 'rejected'])
+          || (before == 'approved' && after == 'ordered')
+          || (before == 'ordered' && after == 'archived'))
+        && request.resource.data.dates.diff(resource.data.dates).affectedKeys().hasOnly([after])
+        && request.resource.data.dates[after] == request.time;
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAdmin() || (isStudent() && resource.data.studentUid == request.auth.uid);
+      allow create: if isStudent() && validNewOrder(request.resource.data);
+      allow update: if isAdmin() && validTransition();
+      allow delete: if false;
     }
   }
 }

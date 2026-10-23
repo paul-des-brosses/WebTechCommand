@@ -1,23 +1,10 @@
 {
-  "name": "serveur-commande-firebase",
-  "version": "3.0.0",
-  "description": "Gestion des commandes de matériel : frontend Vue.js 3, API Express, stockage Firestore (firebase-admin) ou fichier local",
-  "main": "backend/server.js",
+  "name": "webtech-command",
+  "version": "4.0.0",
+  "private": true,
+  "description": "Gestion des commandes de matériel : site statique (Vue.js 3) sur GitHub Pages, Firebase Auth + Firestore comme backend",
   "scripts": {
-    "start": "node backend/server.js"
+    "start": "node serve.js"
   },
-  "dependencies": {
-    "express": "^5.3.0",
-    "firebase-admin": "^13.10.0"
-  },
-  "keywords": [
-    "vue",
-    "express",
-    "firebase",
-    "firestore",
-    "webtech",
-    "createch"
-  ],
-  "author": "",
   "license": "MIT"
 }

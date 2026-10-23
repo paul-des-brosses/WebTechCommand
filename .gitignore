@@ -2,10 +2,3 @@ node_modules/
 .DS_Store
 Thumbs.db
 .claude/
-
-# Données locales (mode sans Firebase)
-data/
-
-# Clé de compte de service Firebase : SECRÈTE, ne jamais la committer
-backend/serviceAccountKey.json
-*-firebase-adminsdk-*.json
